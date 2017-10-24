@@ -9,6 +9,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/csv"
 	"flag"
@@ -39,15 +40,16 @@ type w3cLogWriter struct {
 	Writer io.Writer
 
 	csvWriter *csv.Writer
+	buffer    bytes.Buffer
 	mutex     sync.Mutex
 }
 
 func newW3cLogWriter(w io.Writer) *w3cLogWriter {
 	wr := &w3cLogWriter{
-		Writer:    w,
-		csvWriter: csv.NewWriter(w),
+		Writer: w,
 	}
 
+	wr.csvWriter = csv.NewWriter(&wr.buffer)
 	wr.csvWriter.Comma = ' '
 	return wr
 }
@@ -56,6 +58,7 @@ func (w *w3cLogWriter) Write(fields []string) {
 	w.mutex.Lock()
 	defer w.mutex.Unlock()
 	w.writeFields(fields)
+	w.sendBuffer()
 }
 func (w *w3cLogWriter) writeFields(fields []string) {
 	err := w.csvWriter.Write(fields)
@@ -69,23 +72,33 @@ func (w *w3cLogWriter) writeFields(fields []string) {
 	}
 }
 
+func (w *w3cLogWriter) sendBuffer() {
+	_, err := w.Writer.Write(w.buffer.Bytes())
+	if err != nil {
+		panic(err)
+	}
+	w.buffer.Reset()
+}
+
 func (w *w3cLogWriter) WriteCommented(fields []string) {
 	w.mutex.Lock()
 	defer w.mutex.Unlock()
-	_, err := w.Writer.Write([]byte("#"))
+	_, err := w.buffer.Write([]byte("#"))
 	if err != nil {
 		panic(err)
 	}
 	w.writeFields(fields)
+	w.sendBuffer()
 }
 
 func (w *w3cLogWriter) WriteComment(comment string) {
 	w.mutex.Lock()
 	defer w.mutex.Unlock()
-	_, err := w.Writer.Write([]byte("#" + comment + "\n"))
+	_, err := w.buffer.Write([]byte("#" + comment + "\n"))
 	if err != nil {
 		panic(err)
 	}
+	w.sendBuffer()
 }
 
 type responseLogger struct {
