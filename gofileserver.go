@@ -1,5 +1,5 @@
 // gofileserver is a simple Go file server that serves a single file system
-// directory on a single port, logging requests to stdout.
+// directory on a single port, logging requests to stderr and syslog.
 //
 // gofileserver is intended to serve streaming media reliably on the local
 // network, since the default Go http server implementation does not enforce
@@ -15,6 +15,8 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
+	"log/syslog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -32,6 +34,7 @@ const w3cTime = "15:04:05"
 var (
 	rootDirectory = flag.String("root_directory", "", "Path to the folder to be served")
 	bindAddress   = flag.String("bind_address", "", "IP and port to bind the server to")
+	logToSyslog   = flag.Bool("log_to_syslog", false, "Whether or not to log to Syslog")
 )
 
 var requestCounter int64
@@ -216,7 +219,18 @@ func main() {
 	flag.Parse()
 	ctx, cancel := context.WithCancel(context.Background())
 
-	logger := newW3cLogWriter(os.Stdout)
+	var logWriter io.Writer = os.Stderr
+
+	if *logToSyslog {
+		syslogWriter, err := syslog.New(syslog.LOG_INFO, "gofileserver")
+		defer syslogWriter.Close()
+		if err != nil {
+			log.Fatal(err)
+		}
+		logWriter = io.MultiWriter(logWriter, syslogWriter)
+	}
+
+	logger := newW3cLogWriter(logWriter)
 	var wg sync.WaitGroup
 	http.Handle("/", loggingHandler{
 		Handler:   http.FileServer(http.Dir(*rootDirectory)),
