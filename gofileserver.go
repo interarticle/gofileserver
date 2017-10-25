@@ -233,7 +233,7 @@ func main() {
 	logger := newW3cLogWriter(logWriter)
 	var wg sync.WaitGroup
 	http.Handle("/", loggingHandler{
-		Handler:   http.FileServer(http.Dir(*rootDirectory)),
+		Handler:   newBetterHttpListingServer(http.Dir(*rootDirectory)),
 		Logger:    logger,
 		WaitGroup: &wg,
 	})
