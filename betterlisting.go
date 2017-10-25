@@ -58,6 +58,7 @@ th.sorting-down::after {
     const table = $("#listing");
     const tbody = table.find("tbody");
     const headers = table.find("thead>tr>th");
+    let lastHash = '';
     let index = 0;
     for (const h of headers) {
         const thisIndex = index;
@@ -68,6 +69,7 @@ th.sorting-down::after {
             } else {
                 location.hash = 'sort=a' + thisIndex;
             }
+            onHashChange();
         });
         index++;
     }
@@ -78,6 +80,8 @@ th.sorting-down::after {
         });
     }
     function onHashChange() {
+        if (location.hash == lastHash) return;
+        lastHash = location.hash;
         const hashParams = location.hash
             .replace(/^#/, '')
             .split('&')
