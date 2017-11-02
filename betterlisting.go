@@ -1,12 +1,17 @@
 package main
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"errors"
+	"flag"
 	"fmt"
 	"html/template"
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -32,6 +37,7 @@ th.sorting-down::after {
     <table id="listing" class="table sortable">
         <thead class="thead-dark">
             <tr>
+                <th class="no-sort"></th>
                 <th>Name</th>
                 <th>Mod Time</th>
                 <th>Size</th>
@@ -39,7 +45,10 @@ th.sorting-down::after {
         </thead>
         <tbody>
             {{range .Dirs}}
-            <tr>
+            <tr data-hash-key="{{.PathHashString}}">
+                <td class="states">
+                    <input class="checked" type="checkbox" disabled>
+                </td>
                 <td>
                     <a href="{{.Name}}{{if .IsDir}}/{{end}}">
                         {{.Name}}{{if .IsDir}}/{{end}}
@@ -63,14 +72,16 @@ th.sorting-down::after {
     for (const h of headers) {
         const thisIndex = index;
         const header = $(h);
-        header.click(() => {
-            if (header.hasClass("sorting-up")) {
-                location.hash = 'sort=d' + thisIndex;
-            } else {
-                location.hash = 'sort=a' + thisIndex;
-            }
-            onHashChange();
-        });
+        if (!header.hasClass("no-sort")) {
+            header.click(() => {
+                if (header.hasClass("sorting-up")) {
+                    location.hash = 'sort=d' + thisIndex;
+                } else {
+                    location.hash = 'sort=a' + thisIndex;
+                }
+                onHashChange();
+            });
+        }
         index++;
     }
     function clearSort() {
@@ -130,11 +141,52 @@ th.sorting-down::after {
     });
     onHashChange();
 </script>
+{{if .FirebaseConfig}}
+<script src="https://www.gstatic.com/firebasejs/4.6.0/firebase.js"></script>
+<script>
+  // Initialize Firebase
+  var config = {
+    apiKey: "{{.FirebaseConfig.APIKey}}",
+    authDomain: "{{.FirebaseConfig.ProjectID}}.firebaseapp.com",
+    databaseURL: "https://{{.FirebaseConfig.ProjectID}}.firebaseio.com",
+    projectId: "{{.FirebaseConfig.ProjectID}}",
+    storageBucket: "{{.FirebaseConfig.ProjectID}}.appspot.com",
+  };
+  firebase.initializeApp(config);
+
+  const database = firebase.database();
+</script>
+<script>
+    const rows = tbody.find("tr");
+    for (const rowElem of rows) {
+        const row = $(rowElem);
+        const checked = row.find('.states>.checked');
+        const ref = database.ref("public/states/" + row.data("hash-key"));
+        ref.on('value', snapshot => {
+            const val = snapshot.val() || {};
+            checked.data('lastState', !!val.checked);
+            checked.prop('checked', !!val.checked);
+            checked.prop('disabled', false);
+        });
+        checked.change(() => {
+            if (checked.data('lastState') === checked.prop('checked')) return;
+            checked.prop('disabled', true);
+            ref.child('checked').set(checked.prop('checked'));
+        });
+    }
+</script>
+{{end}}
 `
 
 var (
 	errWrongType    = errors.New("Wrong path type")
 	listingTemplate *template.Template
+)
+
+var (
+	PathHashHMACKey   = flag.String("path_hash_hmac_key", "", "A string (that will be hashed) key to be used for path hashes")
+	FirebaseAPIKey    = flag.String("firebase_api_key", "", "Firebase API key to be used to store persistent state. Setting this enables Firebase")
+	FirebaseProjectID = flag.String("firebase_project_id", "", "Firebase Project Id")
 )
 
 var byteUnits = []string{"B", "KiB", "MiB", "GiB", "TiB"}
@@ -154,15 +206,33 @@ func init() {
 	}).Parse(betterListingTemplate))
 }
 
+type firebaseConfig struct {
+	APIKey    string
+	ProjectID string
+}
+
+type fileInfoEx struct {
+	os.FileInfo
+	PathHashString string
+}
+
 type betterHttpListingServer struct {
 	root       http.FileSystem
 	fileServer http.Handler
+
+	hmacKey []byte
 }
 
 func newBetterHttpListingServer(root http.FileSystem) http.Handler {
+	var hmacKey []byte
+	if *PathHashHMACKey != "" {
+		hmacKeyArray := sha256.Sum256([]byte(*PathHashHMACKey))
+		hmacKey = hmacKeyArray[:]
+	}
 	return &betterHttpListingServer{
 		root:       root,
 		fileServer: http.FileServer(root),
+		hmacKey:    hmacKey,
 	}
 }
 
@@ -208,14 +278,37 @@ func (s *betterHttpListingServer) tryHandle(w http.ResponseWriter, r *http.Reque
 		return dirs[i].Name() < dirs[j].Name()
 	})
 
+	dirsEx := make([]fileInfoEx, len(dirs))
+	for i, info := range dirs {
+		dirsEx[i] = fileInfoEx{
+			FileInfo: info,
+		}
+		if s.hmacKey != nil {
+			h := hmac.New(sha256.New, s.hmacKey)
+			h.Write([]byte(filepath.Join(p, dirs[i].Name())))
+			mac := h.Sum(nil)
+			dirsEx[i].PathHashString = base64.URLEncoding.EncodeToString(mac)
+		}
+	}
+
+	var fbConfig *firebaseConfig
+	if *FirebaseAPIKey != "" {
+		fbConfig = &firebaseConfig{
+			APIKey:    *FirebaseAPIKey,
+			ProjectID: *FirebaseProjectID,
+		}
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
 	err = listingTemplate.Execute(w, struct {
-		Path string
-		Dirs []os.FileInfo
+		Path           string
+		Dirs           []fileInfoEx
+		FirebaseConfig *firebaseConfig
 	}{
 		p,
-		dirs,
+		dirsEx,
+		fbConfig,
 	})
 	if err != nil {
 		return err
