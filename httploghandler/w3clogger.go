@@ -100,6 +100,8 @@ func (w *w3cLogger) OnAfterHandle() {
 type w3cHijackerLogger struct {
 	*w3cLogger
 	http.Hijacker
+
+	hijacked bool
 }
 
 func (w *w3cHijackerLogger) Hijack() (net.Conn, *bufio.ReadWriter, error) {
@@ -107,11 +109,18 @@ func (w *w3cHijackerLogger) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	if err != nil {
 		return conn, rw, err
 	}
+	w.hijacked = true
 	w.Status = -1
 	if c, ok := conn.(*net.TCPConn); ok {
 		return tcpConnWrap{c, w}, rw, err
 	} else {
 		return connWrap{c, w}, rw, err
+	}
+}
+
+func (w *w3cHijackerLogger) OnAfterHandle() {
+	if !w.hijacked {
+		w.w3cLogger.OnAfterHandle()
 	}
 }
 
@@ -122,7 +131,7 @@ type connWrap struct {
 }
 
 func (c connWrap) Close() error {
-	c.l.OnAfterHandle()
+	c.l.w3cLogger.OnAfterHandle()
 	return c.Conn.Close()
 }
 
@@ -133,6 +142,6 @@ type tcpConnWrap struct {
 }
 
 func (c tcpConnWrap) Close() error {
-	c.l.OnAfterHandle()
+	c.l.w3cLogger.OnAfterHandle()
 	return c.TCPConn.Close()
 }

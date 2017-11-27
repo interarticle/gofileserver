@@ -79,7 +79,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rww.Init()
 	rww.OnBeforeHandle()
 	if hj, ok := w.(http.Hijacker); ok {
-		h.handler.ServeHTTP(&w3cHijackerLogger{rww, hj}, r)
+		hrww := &w3cHijackerLogger{w3cLogger: rww, Hijacker: hj}
+		defer hrww.OnAfterHandle()
+		h.handler.ServeHTTP(hrww, r)
 	} else {
 		defer rww.OnAfterHandle()
 		h.handler.ServeHTTP(rww, r)
