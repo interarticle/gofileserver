@@ -78,8 +78,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	rww.Init()
 	rww.OnBeforeHandle()
-	defer rww.OnAfterHandle()
-	h.handler.ServeHTTP(rww, r)
+	if hj, ok := w.(http.Hijacker); ok {
+		h.handler.ServeHTTP(&w3cHijackerLogger{rww, hj}, r)
+	} else {
+		defer rww.OnAfterHandle()
+		h.handler.ServeHTTP(rww, r)
+	}
 }
 
 func (h *Handler) writeFileHeader() {

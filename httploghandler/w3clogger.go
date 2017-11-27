@@ -1,7 +1,9 @@
 package httploghandler
 
 import (
+	"bufio"
 	"fmt"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -93,4 +95,44 @@ func (w *w3cLogger) OnAfterHandle() {
 		w.WaitGroup.Done()
 	}
 	w.LogWriter.Write(append(w.MakePrefixFields(), suffix...))
+}
+
+type w3cHijackerLogger struct {
+	*w3cLogger
+	http.Hijacker
+}
+
+func (w *w3cHijackerLogger) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	conn, rw, err := w.Hijacker.Hijack()
+	if err != nil {
+		return conn, rw, err
+	}
+	w.Status = -1
+	if c, ok := conn.(*net.TCPConn); ok {
+		return tcpConnWrap{c, w}, rw, err
+	} else {
+		return connWrap{c, w}, rw, err
+	}
+}
+
+type connWrap struct {
+	net.Conn
+
+	l *w3cHijackerLogger
+}
+
+func (c connWrap) Close() error {
+	c.l.OnAfterHandle()
+	return c.Close()
+}
+
+type tcpConnWrap struct {
+	*net.TCPConn
+
+	l *w3cHijackerLogger
+}
+
+func (c tcpConnWrap) Close() error {
+	c.l.OnAfterHandle()
+	return c.Close()
 }
