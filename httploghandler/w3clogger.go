@@ -3,6 +3,7 @@ package httploghandler
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"sync"
@@ -160,5 +161,11 @@ func (c tcpConnWrap) Close() error {
 func (c *tcpConnWrap) Write(b []byte) (int, error) {
 	n, err := c.TCPConn.Write(b)
 	atomic.AddInt64(&c.bytesWritten, int64(n))
+	return n, err
+}
+
+func (c *tcpConnWrap) ReadFrom(r io.Reader) (int64, error) {
+	n, err := c.TCPConn.ReadFrom(r)
+	atomic.AddInt64(&c.bytesWritten, n)
 	return n, err
 }
