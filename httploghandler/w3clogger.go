@@ -123,7 +123,7 @@ type connWrap struct {
 
 func (c connWrap) Close() error {
 	c.l.OnAfterHandle()
-	return c.Close()
+	return c.Conn.Close()
 }
 
 type tcpConnWrap struct {
@@ -134,5 +134,5 @@ type tcpConnWrap struct {
 
 func (c tcpConnWrap) Close() error {
 	c.l.OnAfterHandle()
-	return c.Close()
+	return c.TCPConn.Close()
 }
