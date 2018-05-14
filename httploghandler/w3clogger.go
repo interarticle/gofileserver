@@ -37,6 +37,7 @@ type w3cLogger struct {
 	started time.Time
 
 	partialLogTimer *time.Timer
+	onceAfterHandle sync.Once
 }
 
 func (w *w3cLogger) Init() {
@@ -134,8 +135,10 @@ type connWrap struct {
 }
 
 func (c *connWrap) Close() error {
-	c.l.w3cLogger.Written += c.bytesWritten
-	c.l.w3cLogger.OnAfterHandle()
+	c.l.onceAfterHandle.Do(func() {
+		c.l.w3cLogger.Written += c.bytesWritten
+		c.l.w3cLogger.OnAfterHandle()
+	})
 	return c.Conn.Close()
 }
 
@@ -153,8 +156,10 @@ type tcpConnWrap struct {
 }
 
 func (c tcpConnWrap) Close() error {
-	c.l.w3cLogger.Written += c.bytesWritten
-	c.l.w3cLogger.OnAfterHandle()
+	c.l.onceAfterHandle.Do(func() {
+		c.l.w3cLogger.Written += c.bytesWritten
+		c.l.w3cLogger.OnAfterHandle()
+	})
 	return c.TCPConn.Close()
 }
 
