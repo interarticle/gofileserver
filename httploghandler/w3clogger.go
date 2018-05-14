@@ -116,7 +116,7 @@ func (w *w3cHijackerLogger) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	if c, ok := conn.(*net.TCPConn); ok {
 		return &tcpConnWrap{TCPConn: c, l: w}, rw, err
 	} else {
-		return &connWrap{Conn: c, l: w}, rw, err
+		return &connWrap{Conn: conn, l: w}, rw, err
 	}
 }
 
