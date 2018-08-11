@@ -115,9 +115,9 @@ func (w *w3cHijackerLogger) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	w.hijacked = true
 	w.Status = -1
 	if c, ok := conn.(*net.TCPConn); ok {
-		return &tcpConnWrap{TCPConn: c, l: w}, rw, err
+		return &tcpConnWrap{TCPConn: c, l: w, bytesWritten: new(int64)}, rw, err
 	} else {
-		return &connWrap{Conn: conn, l: w}, rw, err
+		return &connWrap{Conn: conn, l: w, bytesWritten: new(int64)}, rw, err
 	}
 }
 
@@ -131,12 +131,12 @@ type connWrap struct {
 	net.Conn
 	l *w3cHijackerLogger
 
-	bytesWritten int64
+	bytesWritten *int64
 }
 
 func (c *connWrap) Close() error {
 	c.l.onceAfterHandle.Do(func() {
-		c.l.w3cLogger.Written += c.bytesWritten
+		c.l.w3cLogger.Written += *c.bytesWritten
 		c.l.w3cLogger.OnAfterHandle()
 	})
 	return c.Conn.Close()
@@ -144,7 +144,7 @@ func (c *connWrap) Close() error {
 
 func (c *connWrap) Write(b []byte) (int, error) {
 	n, err := c.Conn.Write(b)
-	atomic.AddInt64(&c.bytesWritten, int64(n))
+	atomic.AddInt64(c.bytesWritten, int64(n))
 	return n, err
 }
 
@@ -152,12 +152,12 @@ type tcpConnWrap struct {
 	*net.TCPConn
 	l *w3cHijackerLogger
 
-	bytesWritten int64
+	bytesWritten *int64
 }
 
 func (c tcpConnWrap) Close() error {
 	c.l.onceAfterHandle.Do(func() {
-		c.l.w3cLogger.Written += c.bytesWritten
+		c.l.w3cLogger.Written += *c.bytesWritten
 		c.l.w3cLogger.OnAfterHandle()
 	})
 	return c.TCPConn.Close()
@@ -165,12 +165,12 @@ func (c tcpConnWrap) Close() error {
 
 func (c *tcpConnWrap) Write(b []byte) (int, error) {
 	n, err := c.TCPConn.Write(b)
-	atomic.AddInt64(&c.bytesWritten, int64(n))
+	atomic.AddInt64(c.bytesWritten, int64(n))
 	return n, err
 }
 
 func (c *tcpConnWrap) ReadFrom(r io.Reader) (int64, error) {
 	n, err := c.TCPConn.ReadFrom(r)
-	atomic.AddInt64(&c.bytesWritten, n)
+	atomic.AddInt64(c.bytesWritten, n)
 	return n, err
 }
