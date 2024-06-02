@@ -15,6 +15,7 @@ import (
 	"io"
 	"log"
 	"log/syslog"
+	"mime"
 	"net/http"
 	"os"
 	"os/signal"
@@ -34,6 +35,7 @@ var (
 func main() {
 	flag.Parse()
 	ctx, cancel := context.WithCancel(context.Background())
+	mime.AddExtensionType(".mkv", "video/webm")
 
 	var logWriter io.Writer = os.Stderr
 
